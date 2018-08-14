@@ -9,7 +9,7 @@ inputX = tf.placeholder(tf.float32)
 inputY = tf.placeholder(tf.float32)
 weight = tf.Variable(5.0)
 
-hypothesis = weight * inputX;
+hypothesis = weight * inputX
 cost = tf.reduce_mean(tf.square(hypothesis - inputY))
 optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
 train = optimizer.minimize(cost)

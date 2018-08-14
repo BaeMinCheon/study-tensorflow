@@ -9,7 +9,7 @@ inputX = tf.placeholder(tf.float32)
 inputY = tf.placeholder(tf.float32)
 weight = tf.Variable(tf.random_normal([1]), name='weight')
 
-hypothesis = weight * inputX;
+hypothesis = weight * inputX
 cost = tf.reduce_mean(tf.square(hypothesis - inputY))
 
 learning_rate = 0.1
