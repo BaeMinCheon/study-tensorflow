@@ -1,86 +1,69 @@
 import tensorflow as tf
-tf.set_random_seed(777)
-import numpy as np
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+# learningRate = float(input("input learning rate : "))
 learningRate = 0.1
 
-trainX = [[0, 0],
-          [0, 1],
-          [1, 0],
-          [1, 1]]
-trainX = np.array(trainX, dtype=np.float32)
-trainY = [[0],
-          [1],
-          [1],
-          [0]]
-trainY = np.array(trainY, dtype=np.float32)
+dataIn = [[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]] # 4x2
+dataOut = [[-1.0], [1.0], [1.0], [-1.0]] # 4x1
 
-inputX = tf.placeholder(tf.float32, [None, 2])
-inputY = tf.placeholder(tf.float32, [None, 1])
+AB = tf.placeholder(tf.float32, [4, 2])
+F = tf.placeholder(tf.float32, [4, 1])
 
-weight01 = tf.Variable(tf.random_normal([2, 2]), name='weight01')
-bias01 = tf.Variable(tf.random_normal([2]), name='bias01')
-layer01 = tf.sigmoid(tf.matmul(inputX, weight01) + bias01)
+weight01 = tf.Variable([[1.0, 1.0], [1.0, 1.0]]) # 2x2
+bias01 = tf.Variable([1.0, 1.0]) # 2x0
+output01 = tf.tanh(tf.add(tf.matmul(AB, weight01), bias01)) # 4x2
 
-weight02 = tf.Variable(tf.random_normal([2, 1]), name='weight02')
-bias02 = tf.Variable(tf.random_normal([1]), name='bias02')
-layer02 = tf.sigmoid(tf.matmul(layer01, weight02) + bias02)
+weight02 = tf.Variable([[1.0], [1.0]]) # 2x1
+bias02 = tf.Variable([1.0]) # 1x0
+output02 = tf.tanh(tf.add(tf.matmul(output01, weight02), bias02)) # 4x1
 
-cost = tf.reduce_mean(- inputY * tf.log(layer02) - (1 - inputY) * tf.log(1 - layer02))
+error = tf.divide(tf.reduce_mean(tf.square(tf.subtract(output02, dataOut))), 2.0)
 
-# Network
-#              mul01  add01      layer01  mul02  add02      layer02
-# inputX -> (*) -> (+) -> (sigmoid) -> (*) -> (+) -> (sigmoid) -> (loss)
-#            ^      ^                   ^      ^
-#            |      |                   |      |
-#      weight01     bias01        weight02     bias02
+#        m1       a1       f1        m2       a2       f2        err
+# AB -> (mul) -> (add) -> (tanh) -> (mul) -> (add) -> (tanh) -> (error)
+#        ^        ^                  ^        ^
+#        |        |                  |        |
+#        w1       b1                 w2       b2
 
-# loss function
-devLayer02 = (layer02 - inputY) / (layer02 * (1.0 - layer02) + 1e-7)
+devErr = tf.subtract(output02, dataOut) # 4x1
+devF02 = tf.multiply(devErr, tf.subtract(1.0, tf.square(output02)))
+devA02 = devF02 # 4x1
 
-# sigmoid f(x) = 1 / ( 1 + e^(-x))
-# dev of sigmoid = f(x) * (1 - f(x))
-d_sigma2 = layer02 * (1 - layer02)
-d_a2 = devLayer02 * d_sigma2
-d_p2 = d_a2
-d_bias02 = d_a2
-d_weight02 = tf.matmul(tf.transpose(layer01), d_p2)
+devWeight02 = tf.matmul(tf.transpose(output01), devA02) # 2x1 = 2x4 * 4x1
+devWeight02 = tf.divide(devWeight02, tf.cast(tf.shape(output01)[0], dtype=tf.float32)) # shape(output01)[0] = 4
+devBias02 = tf.reduce_mean(devA02, axis=[0]) # 1x0 
 
-d_bias02_mean = tf.reduce_mean(d_bias02, axis=[0])
-d_weight02_mean = d_weight02 / tf.cast(tf.shape(layer01)[0], dtype=tf.float32)
+devM02 = tf.matmul(devA02, tf.transpose(weight02)) # 4x2 = 4x1 * 1x2
+devF01 = tf.multiply(devM02, tf.subtract(1.0, tf.square(output01)))
+devA01 = devF01 # 4x2
 
-d_layer01 = tf.matmul(d_p2, tf.transpose(weight02))
-d_sigma1 = layer01 * (1 - layer01)
-d_a1 = d_layer01 * d_sigma1
-d_bias01 = d_a1
-d_p1 = d_a1
-d_weight01 = tf.matmul(tf.transpose(inputX), d_a1)
+devWeight01 = tf.matmul(tf.transpose(AB), devA01) # 2x2 = 2x4 * 4x2
+devWeight01 = tf.divide(devWeight01, tf.cast(tf.shape(AB)[0], dtype=tf.float32)) # shape(AB)[0] = 4
+devBias01 = tf.reduce_mean(devA01, axis=[0]) # 2x0
 
-d_weight01_mean = d_weight01 / tf.cast(tf.shape(inputX)[0], dtype=tf.float32)
-d_bias01_mean = tf.reduce_mean(d_bias01, axis=[0])
-
-step = [
-  tf.assign(weight02, weight02 - learningRate * d_weight02_mean),
-  tf.assign(bias02, bias02 - learningRate * d_bias02_mean),
-  tf.assign(weight01, weight01 - learningRate * d_weight01_mean),
-  tf.assign(bias01, bias01 - learningRate * d_bias01_mean)
+train = [
+    tf.assign(weight01, tf.subtract(weight01, tf.multiply(devWeight01, learningRate))),
+    tf.assign(bias01, tf.subtract(bias01, tf.multiply(devBias01, learningRate))),
+    tf.assign(weight02, tf.subtract(weight02, tf.multiply(devWeight02, learningRate))),
+    tf.assign(bias02, tf.subtract(bias02, tf.multiply(devBias02, learningRate)))
 ]
-
-predicted = tf.cast(layer02 > 0.5, dtype=tf.float32)
-accuracy = tf.reduce_mean(tf.cast(tf.equal(predicted, inputY), dtype=tf.float32))
 
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
-    print("shape", sess.run(tf.shape(inputX)[0], feed_dict={inputX: trainX}))
 
-    for i in range(10001):
-        sess.run([step, cost], feed_dict={inputX: trainX, inputY: trainY})
-        if i % 1000 == 0:
-            print(i, sess.run([cost, d_weight01], feed_dict={
-                  inputX: trainX, inputY: trainY}), sess.run([weight01, weight02]))
+    for i in range(1001):
+        errorV, trainV, outV = sess.run([error, train, output02], feed_dict={AB: dataIn, F: dataOut})
+        
+        # print("train number #{}".format(i))
+        # print(" error : {}".format(errorV))
+        # print()
+        
+        if i % 100 == 0:
+            print("train number #{}".format(i))
+            print(" error : {}".format(errorV))
+            print(" output \n{}".format(outV))
+            print()
 
-    hypo, pred, accu = sess.run([layer02, predicted, accuracy],
-                       feed_dict={inputX: trainX, inputY: trainY})
-    print("\n hypo: ", hypo, "\n pred: ", pred, "\n accu: ", accu)
-
-print("DONE")
+print("\n \t TRAIN DONE")
